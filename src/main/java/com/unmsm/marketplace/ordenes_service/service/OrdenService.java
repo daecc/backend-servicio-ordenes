@@ -135,4 +135,111 @@ public class OrdenService {
             )).toList()
         )).toList();
     }
+    
+    @Transactional(readOnly = true)
+    public List<SubOrdenResponseDTO> buscarPorNombreVendedor(String nombreVendedor) {
+        List<SubOrden> subOrdenes = subOrdenRepository.findByNombreVendedorContainingIgnoreCase(nombreVendedor);
+
+        return subOrdenes.stream().map(sub -> new SubOrdenResponseDTO(
+            sub.getIdSOrden(),
+            sub.getOrdenMaestra().getIdOMaestra(),
+            sub.getIdVendedor(),
+            sub.getNombreVendedor(),
+            sub.getDireccionEnvio(),
+            sub.getDistritoEnvio(),
+            sub.getMetodoEnvio(),
+            sub.getTelefonoContacto(),
+            sub.getEstadoParcialVendedor(),
+            sub.getMontoSubTotalVendedor(),
+            sub.getFechaCreacionSub(),
+            sub.getOrdenItems().stream().map(item -> new OrdenItemResponseDTO(
+                item.getIdOItem(),
+                item.getIdProducto(),
+                item.getCantidad(),
+                item.getPrecioUnitario(),
+                item.getEstadoItem()
+            )).toList()
+        )).toList();
+    }
+    
+    
+    @Transactional
+    public void actualizarEstadoLogistico(Long idSubOrden, Integer nuevoEstado) {
+    // 1. Buscamos la sub-orden en la Base de Datos
+    SubOrden subOrden = subOrdenRepository.findById(idSubOrden)
+        .orElseThrow(() -> new RuntimeException("SubOrden no encontrada"));
+    
+    // 2. Actualizamos el estado de la sub-orden elegida
+    subOrden.setEstadoParcialVendedor(nuevoEstado);
+    
+    // 3. Obtenemos la Orden Maestra y todas sus sub-órdenes para recalcular el estado global
+    OrdenMaestra ordenMaestra = subOrden.getOrdenMaestra();
+    List<SubOrden> todasLasSubOrdenes = ordenMaestra.getSubOrdenes();
+    
+    boolean todosEntregados = true;
+    boolean algunEntregado = false;
+    boolean algunDespachado = false;
+    boolean algunPreparacion = false;
+    
+    for (SubOrden sub : todasLasSubOrdenes) {
+        int estado = sub.getEstadoParcialVendedor();
+        if (estado != 4) todosEntregados = false;
+        if (estado == 4) algunEntregado = true;
+        if (estado == 3) algunDespachado = true;
+        if (estado == 2) algunPreparacion = true;
+    }
+    
+    int nuevoEstadoGlobal = 1; // 1 = PENDIENTE por defecto
+    if (todosEntregados) {
+        nuevoEstadoGlobal = 5; // 5 = ENTREGADA (Todo se entregó)
+    } else if (algunEntregado) {
+        nuevoEstadoGlobal = 4; // 4 = PARCIAL. ENTREGADA
+    } else if (algunDespachado) {
+        nuevoEstadoGlobal = 3; // 3 = PARCIAL. DESPACHADA
+    } else if (algunPreparacion) {
+        nuevoEstadoGlobal = 2; // 2 = EN PREPARACIÓN
+    }
+    
+    // 4. Actualizamos el estado global en la Orden Maestra
+    ordenMaestra.setEstadoGlobal(nuevoEstadoGlobal);
+    
+    // La anotación @Transactional se encarga de hacer el UPDATE automático en PostgreSQL
+    }
+    
+    
+    @Transactional(readOnly = true)
+    public List<OrdenMaestraResponseDTO> obtenerOrdenesPorDni(String dni) {
+        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDni(dni);
+        
+        return ordenes.stream().map(orden -> new OrdenMaestraResponseDTO(
+            orden.getIdOMaestra(),
+            orden.getClienteNombre(),
+            orden.getClienteDni(),
+            orden.getMetodoPago(),
+            orden.getEstadoGlobal(),
+            orden.getMontoTotalMaestro(),
+            orden.getFechaCreacion(),
+            orden.getSubOrdenes().stream().map(sub -> new SubOrdenResponseDTO(
+                sub.getIdSOrden(),
+                sub.getOrdenMaestra().getIdOMaestra(),
+                sub.getIdVendedor(),
+                sub.getNombreVendedor(),
+                sub.getDireccionEnvio(),
+                sub.getDistritoEnvio(),
+                sub.getMetodoEnvio(),
+                sub.getTelefonoContacto(),
+                sub.getEstadoParcialVendedor(),
+                sub.getMontoSubTotalVendedor(),
+                sub.getFechaCreacionSub(),
+                sub.getOrdenItems().stream().map(item -> new OrdenItemResponseDTO(
+                    item.getIdOItem(),
+                    item.getIdProducto(),
+                    item.getCantidad(),
+                    item.getPrecioUnitario(),
+                    item.getEstadoItem()
+                )).toList()
+            )).toList()
+        )).toList();
+    }
+    
 }
