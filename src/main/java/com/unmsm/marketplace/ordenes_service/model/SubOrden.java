@@ -6,15 +6,22 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+@Getter
+@Setter
 @Entity
 @Table(name = "sub_orden")
 public class SubOrden {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+   
     @Column(name = "id_sorden")
     private Long idSOrden;
+    
+    @Column(name = "id_seller")
+    private Long idSeller;
 
     @Column(name = "id_vendedor")
     private Long idVendedor;

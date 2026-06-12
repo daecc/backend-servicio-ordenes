@@ -7,6 +7,7 @@ import java.util.List;
 public record SubOrdenResponseDTO(
     Long idSOrden,
     Long idOMaestra,
+    Long idSeller,
     Long idVendedor,
     String nombreVendedor,
     String direccionEnvio,

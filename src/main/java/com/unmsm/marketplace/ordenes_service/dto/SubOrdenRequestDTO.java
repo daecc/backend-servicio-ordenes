@@ -5,6 +5,7 @@ import java.util.List;
 
 public record SubOrdenRequestDTO(
     Long idVendedor,
+    Long idSeller,
     String nombreVendedor,
     String direccionEnvio,
     String distritoEnvio,

@@ -11,23 +11,46 @@ import com.unmsm.marketplace.ordenes_service.model.OrdenMaestra;
 import com.unmsm.marketplace.ordenes_service.model.SubOrden;
 import com.unmsm.marketplace.ordenes_service.repository.OrdenMaestraRepository;
 import com.unmsm.marketplace.ordenes_service.repository.SubOrdenRepository;
+
+// NUEVO: Importaciones necesarias para el Round-Robin y Feign
+
+import com.unmsm.marketplace.ordenes_service.dto.SellerDataDTO;
+import com.unmsm.marketplace.ordenes_service.model.ControlRoundRobin;
+import com.unmsm.marketplace.ordenes_service.repository.ControlRoundRobinRepository;
+import com.unmsm.marketplace.ordenes_service.client.VendorStaffClient;
+import com.unmsm.marketplace.ordenes_service.dto.StaffResponseWrapperDTO;
+import org.springframework.beans.factory.annotation.Value;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional; // NUEVO: Para manejar el Optional del Repositorio
 
 @Service
 public class OrdenService {
 
     private final OrdenMaestraRepository ordenMaestraRepository;
     private final SubOrdenRepository subOrdenRepository;
+    private final ControlRoundRobinRepository rrRepository;
+    private final VendorStaffClient vendorStaffClient;
+    
+    @Value("${vendor.service.secret}")
+    private String vendorSecretKey;
+    
 
-    // Inyección de dependencias por constructor de ambos repositorios
-    public OrdenService(OrdenMaestraRepository ordenMaestraRepository, SubOrdenRepository subOrdenRepository) {
+    // EL CONSTRUCTOR CORREGIDO: Ahora incluye todas las dependencias 'final'
+    public OrdenService(
+            OrdenMaestraRepository ordenMaestraRepository, 
+            SubOrdenRepository subOrdenRepository,
+            ControlRoundRobinRepository rrRepository,
+            VendorStaffClient vendorStaffClient) {
         this.ordenMaestraRepository = ordenMaestraRepository;
         this.subOrdenRepository = subOrdenRepository;
+        this.rrRepository = rrRepository;
+        this.vendorStaffClient = vendorStaffClient;
     }
 
     @Transactional
@@ -43,6 +66,11 @@ public class OrdenService {
 
         for (SubOrdenRequestDTO subDto : dto.subOrdenes()) {
             SubOrden subOrden = new SubOrden();
+            
+            // NUEVO: El idSeller ya no viene del JSON, lo calculamos con Round-Robin
+            Long idSellerAsignado = calcularSiguienteSellerRoundRobin(subDto.idVendedor());
+            subOrden.setIdSeller(idSellerAsignado);
+            
             subOrden.setIdVendedor(subDto.idVendedor());
             subOrden.setNombreVendedor(subDto.nombreVendedor());
             subOrden.setDireccionEnvio(subDto.direccionEnvio());
@@ -86,6 +114,7 @@ public class OrdenService {
             orden.getSubOrdenes().stream().map(sub -> new SubOrdenResponseDTO(
                 sub.getIdSOrden(),
                 sub.getOrdenMaestra().getIdOMaestra(),
+                sub.getIdSeller(),
                 sub.getIdVendedor(),
                 sub.getNombreVendedor(),
                 sub.getDireccionEnvio(),
@@ -106,10 +135,6 @@ public class OrdenService {
         )).toList();
     }
 
-    /**
-     * Obtiene exclusivamente las sub-órdenes que corresponden a un vendedor específico.
-     * Mapea directamente la entidad SubOrden a su SubOrdenResponseDTO correspondiente.
-     */
     @Transactional(readOnly = true)
     public List<SubOrdenResponseDTO> obtenerOrdenesPorVendedor(Long idVendedor) {
         List<SubOrden> subOrdenes = subOrdenRepository.findByIdVendedor(idVendedor);
@@ -117,6 +142,7 @@ public class OrdenService {
         return subOrdenes.stream().map(sub -> new SubOrdenResponseDTO(
             sub.getIdSOrden(),
             sub.getOrdenMaestra().getIdOMaestra(),
+            sub.getIdSeller(),
             sub.getIdVendedor(),
             sub.getNombreVendedor(),
             sub.getDireccionEnvio(),
@@ -143,6 +169,7 @@ public class OrdenService {
         return subOrdenes.stream().map(sub -> new SubOrdenResponseDTO(
             sub.getIdSOrden(),
             sub.getOrdenMaestra().getIdOMaestra(),
+            sub.getIdSeller(),
             sub.getIdVendedor(),
             sub.getNombreVendedor(),
             sub.getDireccionEnvio(),
@@ -162,50 +189,42 @@ public class OrdenService {
         )).toList();
     }
     
-    
     @Transactional
     public void actualizarEstadoLogistico(Long idSubOrden, Integer nuevoEstado) {
-    // 1. Buscamos la sub-orden en la Base de Datos
-    SubOrden subOrden = subOrdenRepository.findById(idSubOrden)
-        .orElseThrow(() -> new RuntimeException("SubOrden no encontrada"));
-    
-    // 2. Actualizamos el estado de la sub-orden elegida
-    subOrden.setEstadoParcialVendedor(nuevoEstado);
-    
-    // 3. Obtenemos la Orden Maestra y todas sus sub-órdenes para recalcular el estado global
-    OrdenMaestra ordenMaestra = subOrden.getOrdenMaestra();
-    List<SubOrden> todasLasSubOrdenes = ordenMaestra.getSubOrdenes();
-    
-    boolean todosEntregados = true;
-    boolean algunEntregado = false;
-    boolean algunDespachado = false;
-    boolean algunPreparacion = false;
-    
-    for (SubOrden sub : todasLasSubOrdenes) {
-        int estado = sub.getEstadoParcialVendedor();
-        if (estado != 4) todosEntregados = false;
-        if (estado == 4) algunEntregado = true;
-        if (estado == 3) algunDespachado = true;
-        if (estado == 2) algunPreparacion = true;
+        SubOrden subOrden = subOrdenRepository.findById(idSubOrden)
+            .orElseThrow(() -> new RuntimeException("SubOrden no encontrada"));
+        
+        subOrden.setEstadoParcialVendedor(nuevoEstado);
+        
+        OrdenMaestra ordenMaestra = subOrden.getOrdenMaestra();
+        List<SubOrden> todasLasSubOrdenes = ordenMaestra.getSubOrdenes();
+        
+        boolean todosEntregados = true;
+        boolean algunEntregado = false;
+        boolean algunDespachado = false;
+        boolean algunPreparacion = false;
+        
+        for (SubOrden sub : todasLasSubOrdenes) {
+            int estado = sub.getEstadoParcialVendedor();
+            if (estado != 4) todosEntregados = false;
+            if (estado == 4) algunEntregado = true;
+            if (estado == 3) algunDespachado = true;
+            if (estado == 2) algunPreparacion = true;
+        }
+        
+        int nuevoEstadoGlobal = 1; 
+        if (todosEntregados) {
+            nuevoEstadoGlobal = 5; 
+        } else if (algunEntregado) {
+            nuevoEstadoGlobal = 4; 
+        } else if (algunDespachado) {
+            nuevoEstadoGlobal = 3; 
+        } else if (algunPreparacion) {
+            nuevoEstadoGlobal = 2; 
+        }
+        
+        ordenMaestra.setEstadoGlobal(nuevoEstadoGlobal);
     }
-    
-    int nuevoEstadoGlobal = 1; // 1 = PENDIENTE por defecto
-    if (todosEntregados) {
-        nuevoEstadoGlobal = 5; // 5 = ENTREGADA (Todo se entregó)
-    } else if (algunEntregado) {
-        nuevoEstadoGlobal = 4; // 4 = PARCIAL. ENTREGADA
-    } else if (algunDespachado) {
-        nuevoEstadoGlobal = 3; // 3 = PARCIAL. DESPACHADA
-    } else if (algunPreparacion) {
-        nuevoEstadoGlobal = 2; // 2 = EN PREPARACIÓN
-    }
-    
-    // 4. Actualizamos el estado global en la Orden Maestra
-    ordenMaestra.setEstadoGlobal(nuevoEstadoGlobal);
-    
-    // La anotación @Transactional se encarga de hacer el UPDATE automático en PostgreSQL
-    }
-    
     
     @Transactional(readOnly = true)
     public List<OrdenMaestraResponseDTO> obtenerOrdenesPorDni(String dni) {
@@ -222,6 +241,7 @@ public class OrdenService {
             orden.getSubOrdenes().stream().map(sub -> new SubOrdenResponseDTO(
                 sub.getIdSOrden(),
                 sub.getOrdenMaestra().getIdOMaestra(),
+                sub.getIdSeller(),
                 sub.getIdVendedor(),
                 sub.getNombreVendedor(),
                 sub.getDireccionEnvio(),
@@ -241,5 +261,63 @@ public class OrdenService {
             )).toList()
         )).toList();
     }
-    
+
+    // =======================================================================
+    // Método privado para ejecutar la lógica de balanceo Round-Robin
+    // =======================================================================
+    private Long calcularSiguienteSellerRoundRobin(Long vendorId) {
+        try {
+            // 1. Traer el objeto contenedor desde el microservicio
+            StaffResponseWrapperDTO response = vendorStaffClient.obtenerStaffPorVendor(vendorSecretKey, vendorId);
+
+            if (response == null || response.data() == null || response.data().isEmpty()) {
+                throw new RuntimeException("No hay sellers disponibles para el vendor " + vendorId);
+            }
+
+            // Extraer la lista de empleados reales desde la propiedad 'data' del record
+            List<SellerDataDTO> staff = response.data();
+
+            // 2. Buscar el estado del balanceo actual en la base de datos
+            ControlRoundRobin control = rrRepository.findById(vendorId).orElse(null);
+
+            Long nuevoIdSellerAsignado;
+
+            if (control == null || control.getUltimoIdSellerAsignado() == null) {
+                // CASO A: Primera vez que se procesa una orden para esta tienda
+                // Se asigna el primer empleado de la lista usando staff_id()
+                nuevoIdSellerAsignado = staff.get(0).staff_id();
+                
+                if (control == null) {
+                    control = new ControlRoundRobin();
+                    control.setIdVendedor(vendorId);
+                }
+            } else {
+                // CASO B: Ya existen asignaciones previas. Buscar la posición del último asignado.
+                Long ultimoId = control.getUltimoIdSellerAsignado();
+                int indiceActual = -1;
+
+                for (int i = 0; i < staff.size(); i++) {
+                    if (staff.get(i).staff_id().equals(ultimoId)) {
+                        indiceActual = i;
+                        break;
+                    }
+                }
+
+                // Calcular la siguiente posición matemática usando el operador módulo %
+                int siguienteIndice = (indiceActual + 1) % staff.size();
+                nuevoIdSellerAsignado = staff.get(siguienteIndice).staff_id();
+            }
+
+            // 3. Persistir el ID del empleado que tomó esta orden para el siguiente turno
+            control.setUltimoIdSellerAsignado(nuevoIdSellerAsignado);
+            rrRepository.save(control);
+
+            // 4. Retornar el ID para que sea guardado en la entidad SubOrden
+            return nuevoIdSellerAsignado;
+
+        } catch (Exception e) {
+            System.err.println("Error en la lógica de Round-Robin o comunicación: " + e.getMessage());
+            throw new RuntimeException("Error asignando sub-orden: " + e.getMessage());
+        }
+    }
 }
