@@ -2,10 +2,13 @@ package com.unmsm.marketplace.ordenes_service.service;
 
 import com.unmsm.marketplace.ordenes_service.dto.OrdenItemRequestDTO;
 import com.unmsm.marketplace.ordenes_service.dto.OrdenItemResponseDTO;
+import com.unmsm.marketplace.ordenes_service.dto.OrdenItemVentasDTO;
 import com.unmsm.marketplace.ordenes_service.dto.OrdenMaestraRequestDTO;
 import com.unmsm.marketplace.ordenes_service.dto.OrdenMaestraResponseDTO;
+import com.unmsm.marketplace.ordenes_service.dto.OrdenMaestraVentasDTO;
 import com.unmsm.marketplace.ordenes_service.dto.SubOrdenRequestDTO;
 import com.unmsm.marketplace.ordenes_service.dto.SubOrdenResponseDTO;
+import com.unmsm.marketplace.ordenes_service.dto.SubOrdenVentasDTO;
 import com.unmsm.marketplace.ordenes_service.model.OrdenItem;
 import com.unmsm.marketplace.ordenes_service.model.OrdenMaestra;
 import com.unmsm.marketplace.ordenes_service.model.SubOrden;
@@ -18,6 +21,7 @@ import com.unmsm.marketplace.ordenes_service.dto.SellerDataDTO;
 import com.unmsm.marketplace.ordenes_service.model.ControlRoundRobin;
 import com.unmsm.marketplace.ordenes_service.repository.ControlRoundRobinRepository;
 import com.unmsm.marketplace.ordenes_service.client.VendorStaffClient;
+import com.unmsm.marketplace.ordenes_service.client.SalesServiceClient;
 import com.unmsm.marketplace.ordenes_service.dto.StaffResponseWrapperDTO;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -36,21 +40,23 @@ public class OrdenService {
     private final SubOrdenRepository subOrdenRepository;
     private final ControlRoundRobinRepository rrRepository;
     private final VendorStaffClient vendorStaffClient;
+    private final SalesServiceClient salesServiceClient;
     
     @Value("${vendor.service.secret}")
     private String vendorSecretKey;
     
 
-    // EL CONSTRUCTOR CORREGIDO: Ahora incluye todas las dependencias 'final'
     public OrdenService(
             OrdenMaestraRepository ordenMaestraRepository, 
             SubOrdenRepository subOrdenRepository,
             ControlRoundRobinRepository rrRepository,
-            VendorStaffClient vendorStaffClient) {
+            VendorStaffClient vendorStaffClient,
+            SalesServiceClient salesServiceClient) {
         this.ordenMaestraRepository = ordenMaestraRepository;
         this.subOrdenRepository = subOrdenRepository;
         this.rrRepository = rrRepository;
         this.vendorStaffClient = vendorStaffClient;
+        this.salesServiceClient = salesServiceClient;
     }
 
     @Transactional
@@ -63,10 +69,8 @@ public class OrdenService {
         ordenMaestra.setEstadoGlobal(1); // 1 = PENDIENTE
         ordenMaestra.setFechaCreacion(LocalDateTime.now());
         ordenMaestra.setSubOrdenes(new ArrayList<>());
-
         for (SubOrdenRequestDTO subDto : dto.subOrdenes()) {
-            SubOrden subOrden = new SubOrden();
-            
+           SubOrden subOrden = new SubOrden();   
             // NUEVO: El idSeller ya no viene del JSON, lo calculamos con Round-Robin
             Long idSellerAsignado = calcularSiguienteSellerRoundRobin(subDto.idVendedor());
             subOrden.setIdSeller(idSellerAsignado);
@@ -96,7 +100,35 @@ public class OrdenService {
             }
             ordenMaestra.getSubOrdenes().add(subOrden);
         }
-        ordenMaestraRepository.save(ordenMaestra);
+        ordenMaestra = ordenMaestraRepository.save(ordenMaestra);
+
+        OrdenMaestra finalOrden = ordenMaestra;
+        try {
+            OrdenMaestraVentasDTO notificacion = new OrdenMaestraVentasDTO(
+                finalOrden.getIdOMaestra(),
+                finalOrden.getClienteNombre(),
+                finalOrden.getClienteDni(),
+                finalOrden.getMetodoPago(),
+                finalOrden.getEstadoGlobal(),
+                finalOrden.getMontoTotalMaestro(),
+                finalOrden.getFechaCreacion(),
+                finalOrden.getSubOrdenes().stream().map(sub -> new SubOrdenVentasDTO(
+                    sub.getIdSOrden(),
+                    sub.getNombreVendedor(),
+                    sub.getEstadoParcialVendedor(),
+                    sub.getMontoSubTotalVendedor(),
+                    sub.getOrdenItems().stream().map(item -> new OrdenItemVentasDTO(
+                        item.getIdOItem(),
+                        item.getIdProducto(),
+                        item.getCantidad(),
+                        item.getPrecioUnitario()
+                    )).toList()
+                )).toList()
+            );
+            salesServiceClient.notificarOrdenCreada(notificacion);
+        } catch (Exception e) {
+            System.err.println("No se pudo notificar al microservicio de Ventas: " + e.getMessage());
+        }
     }
     
     @Transactional(readOnly = true)
@@ -257,6 +289,33 @@ public class OrdenService {
                     item.getCantidad(),
                     item.getPrecioUnitario(),
                     item.getEstadoItem()
+                )).toList()
+            )).toList()
+        )).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrdenMaestraVentasDTO> obtenerOrdenesPorDniParaVentas(String dni) {
+        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDni(dni);
+
+        return ordenes.stream().map(orden -> new OrdenMaestraVentasDTO(
+            orden.getIdOMaestra(),
+            orden.getClienteNombre(),
+            orden.getClienteDni(),
+            orden.getMetodoPago(),
+            orden.getEstadoGlobal(),
+            orden.getMontoTotalMaestro(),
+            orden.getFechaCreacion(),
+            orden.getSubOrdenes().stream().map(sub -> new SubOrdenVentasDTO(
+                sub.getIdSOrden(),
+                sub.getNombreVendedor(),
+                sub.getEstadoParcialVendedor(),
+                sub.getMontoSubTotalVendedor(),
+                sub.getOrdenItems().stream().map(item -> new OrdenItemVentasDTO(
+                    item.getIdOItem(),
+                    item.getIdProducto(),
+                    item.getCantidad(),
+                    item.getPrecioUnitario()
                 )).toList()
             )).toList()
         )).toList();

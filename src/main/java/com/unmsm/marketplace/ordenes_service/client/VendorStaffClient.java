@@ -19,3 +19,4 @@ public interface VendorStaffClient {
         @RequestParam("vendor_id") Long vendorId 
     );
 }
+
