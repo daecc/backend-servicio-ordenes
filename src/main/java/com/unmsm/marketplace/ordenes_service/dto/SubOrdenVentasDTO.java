@@ -8,5 +8,6 @@ public record SubOrdenVentasDTO(
     String nombreVendedor,
     Integer estadoParcialVendedor,
     BigDecimal montoSubTotalVendedor,
-    List<OrdenItemVentasDTO> items
+    List<OrdenItemVentasDTO> items,
+    Boolean activo
 ) {}

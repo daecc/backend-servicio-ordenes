@@ -6,7 +6,9 @@ import com.unmsm.marketplace.ordenes_service.dto.OrdenMaestraVentasDTO;
 import com.unmsm.marketplace.ordenes_service.dto.SubOrdenResponseDTO;
 import com.unmsm.marketplace.ordenes_service.service.OrdenService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -37,6 +39,7 @@ public class OrdenController {
     
     @GetMapping
     @Operation(summary = "Listar todas las ordenes maestras", description = "Para el superadmin, muestra todas las ordenes sin filtro")
+    @ApiResponse(responseCode = "200", description = "Lista de ordenes maestras obtenida exitosamente")
     public ResponseEntity<List<OrdenMaestraResponseDTO>> listarTodasLasOrdenes() {
         List<OrdenMaestraResponseDTO> ordenes = ordenService.obtenerTodasLasOrdenes();
         return ResponseEntity.ok(ordenes);
@@ -45,7 +48,11 @@ public class OrdenController {
     
     @GetMapping("/vendedor/{idVendedor}")
     @Operation(summary = "Buscar subordenes por ID de vendedor (solo activas)", description = "Para el frontend del admin vendedor que inicio sesion")
-    public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedor(@PathVariable Long idVendedor) {
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Lista de subordenes activas encontradas"),
+        @ApiResponse(responseCode = "204", description = "El vendedor no tiene subordenes activas")
+    })
+    public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedor(@Parameter(description = "ID del vendedor") @PathVariable Long idVendedor) {
     List<SubOrdenResponseDTO> subOrdenes = ordenService.obtenerOrdenesPorVendedor(idVendedor);
     
     if (subOrdenes.isEmpty()) {
@@ -58,7 +65,11 @@ public class OrdenController {
     
     @GetMapping("/admin/vendedor/{idVendedor}")
     @Operation(summary = "Buscar subordenes por ID de vendedor (todas)", description = "Para el buscador del superadmin, muestra historial completo")
-    public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedorAdmin(@PathVariable Long idVendedor) {
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Lista de todas las subordenes del vendedor encontradas"),
+        @ApiResponse(responseCode = "204", description = "El vendedor no tiene subordenes")
+    })
+    public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedorAdmin(@Parameter(description = "ID del vendedor") @PathVariable Long idVendedor) {
     List<SubOrdenResponseDTO> subOrdenes = ordenService.obtenerTodasLasOrdenesPorVendedor(idVendedor);
     
     if (subOrdenes.isEmpty()) {
@@ -71,7 +82,11 @@ public class OrdenController {
     
     @GetMapping("/vendedor/nombre/{nombre}")
     @Operation(summary = "Buscar subordenes por nombre de vendedor", description = "Busqueda case-insensitive")
-    public ResponseEntity<List<SubOrdenResponseDTO>> obtenerOrdenesPorNombreVendedor(@PathVariable String nombre) {
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Lista de subordenes encontradas por nombre"),
+        @ApiResponse(responseCode = "204", description = "No se encontraron subordenes con ese nombre")
+    })
+    public ResponseEntity<List<SubOrdenResponseDTO>> obtenerOrdenesPorNombreVendedor(@Parameter(description = "Nombre del vendedor") @PathVariable String nombre) {
     List<SubOrdenResponseDTO> ordenes = ordenService.buscarPorNombreVendedor(nombre);
     
     if (ordenes.isEmpty()) {
@@ -84,9 +99,13 @@ public class OrdenController {
     
     @PutMapping("/suborden/{idSubOrden}/estado/{nuevoEstado}")
     @Operation(summary = "Actualizar estado logistico de una suborden")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Estado actualizado exitosamente"),
+        @ApiResponse(responseCode = "400", description = "Solicitud invalida o la orden esta archivada")
+    })
     public ResponseEntity<Void> cambiarEstadoSubOrden(
-        @PathVariable Long idSubOrden, 
-        @PathVariable Integer nuevoEstado) {
+        @Parameter(description = "ID de la suborden") @PathVariable Long idSubOrden, 
+        @Parameter(description = "Nuevo estado logístico (1-5)") @PathVariable Integer nuevoEstado) {
     
     ordenService.actualizarEstadoLogistico(idSubOrden, nuevoEstado);
     
@@ -96,7 +115,11 @@ public class OrdenController {
     
     @GetMapping("/ventas/cliente/{dni}")
     @Operation(summary = "Buscar ordenes por DNI para el microservicio de Ventas", description = "Endpoint exclusivo para Ventas, retorna solo los datos necesarios para que el cliente vea sus pedidos")
-    public ResponseEntity<List<OrdenMaestraVentasDTO>> buscarOrdenesPorDniParaVentas(@PathVariable String dni) {
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Lista de ordenes encontradas para el cliente"),
+        @ApiResponse(responseCode = "204", description = "El cliente no tiene ordenes")
+    })
+    public ResponseEntity<List<OrdenMaestraVentasDTO>> buscarOrdenesPorDniParaVentas(@Parameter(description = "DNI del cliente") @PathVariable String dni) {
         List<OrdenMaestraVentasDTO> ordenes = ordenService.obtenerOrdenesPorDniParaVentas(dni);
         
         if (ordenes.isEmpty()) {
@@ -109,7 +132,11 @@ public class OrdenController {
     
     @GetMapping("/cliente/{dni}")
     @Operation(summary = "Buscar ordenes por DNI del cliente")
-    public ResponseEntity<List<OrdenMaestraResponseDTO>> buscarOrdenesPorDni(@PathVariable String dni) {
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Lista de ordenes encontradas para el cliente"),
+        @ApiResponse(responseCode = "204", description = "El cliente no tiene ordenes")
+    })
+    public ResponseEntity<List<OrdenMaestraResponseDTO>> buscarOrdenesPorDni(@Parameter(description = "DNI del cliente") @PathVariable String dni) {
         List<OrdenMaestraResponseDTO> ordenes = ordenService.obtenerOrdenesPorDni(dni);
         
         if (ordenes.isEmpty()) {

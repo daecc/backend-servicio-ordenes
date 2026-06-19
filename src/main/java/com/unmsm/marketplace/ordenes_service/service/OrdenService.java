@@ -22,15 +22,20 @@ import com.unmsm.marketplace.ordenes_service.model.ControlRoundRobin;
 import com.unmsm.marketplace.ordenes_service.repository.ControlRoundRobinRepository;
 import com.unmsm.marketplace.ordenes_service.client.VendorStaffClient;
 import com.unmsm.marketplace.ordenes_service.client.SalesServiceClient;
+import com.unmsm.marketplace.ordenes_service.client.AnalyticsClient;
 import com.unmsm.marketplace.ordenes_service.dto.StaffResponseWrapperDTO;
+import com.unmsm.marketplace.ordenes_service.dto.AnalyticsEvent;
 import org.springframework.beans.factory.annotation.Value;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class OrdenService {
@@ -40,9 +45,13 @@ public class OrdenService {
     private final ControlRoundRobinRepository rrRepository;
     private final VendorStaffClient vendorStaffClient;
     private final SalesServiceClient salesServiceClient;
+    private final AnalyticsClient analyticsClient;
     
     @Value("${vendor.service.secret}")
     private String vendorSecretKey;
+
+    @Value("${analytics.api.key}")
+    private String analyticsApiKey;
     
 
     public OrdenService(
@@ -50,12 +59,14 @@ public class OrdenService {
             SubOrdenRepository subOrdenRepository,
             ControlRoundRobinRepository rrRepository,
             VendorStaffClient vendorStaffClient,
-            SalesServiceClient salesServiceClient) {
+            SalesServiceClient salesServiceClient,
+            AnalyticsClient analyticsClient) {
         this.ordenMaestraRepository = ordenMaestraRepository;
         this.subOrdenRepository = subOrdenRepository;
         this.rrRepository = rrRepository;
         this.vendorStaffClient = vendorStaffClient;
         this.salesServiceClient = salesServiceClient;
+        this.analyticsClient = analyticsClient;
     }
 
     @Transactional
@@ -121,12 +132,36 @@ public class OrdenService {
                         item.getIdProducto(),
                         item.getCantidad(),
                         item.getPrecioUnitario()
-                    )).toList()
-                )).toList()
+                )).toList(),
+                sub.getActivo()
+            )).toList()
             );
             salesServiceClient.notificarOrdenCreada(notificacion);
         } catch (Exception e) {
             System.err.println("No se pudo notificar al microservicio de Ventas: " + e.getMessage());
+        }
+
+        try {
+            analyticsClient.sendEvent(analyticsApiKey, new AnalyticsEvent(
+                UUID.randomUUID().toString(),
+                "ORDER_CREATED",
+                "ordenes-service",
+                "orden_maestra",
+                String.valueOf(finalOrden.getIdOMaestra()),
+                finalOrden.getSubOrdenes().stream()
+                    .map(sub -> String.valueOf(sub.getIdVendedor()))
+                    .distinct()
+                    .toList(),
+                Instant.now().toString(),
+                Map.of(
+                    "id_orden", finalOrden.getIdOMaestra(),
+                    "cliente_dni", finalOrden.getClienteDni(),
+                    "total", finalOrden.getMontoTotalMaestro(),
+                    "sub_ordenes", finalOrden.getSubOrdenes().size()
+                )
+            ));
+        } catch (Exception e) {
+            System.err.println("[ANALYTICS] Error enviando ORDER_CREATED: " + e.getMessage());
         }
     }
     
@@ -161,8 +196,10 @@ public class OrdenService {
                     item.getCantidad(),
                     item.getPrecioUnitario(),
                     item.getEstadoItem()
-                )).toList()
+                )).toList(),
+                sub.getActivo()
             )).toList()
+
         )).toList();
     }
 
@@ -189,7 +226,8 @@ public class OrdenService {
                 item.getCantidad(),
                 item.getPrecioUnitario(),
                 item.getEstadoItem()
-            )).toList()
+                )).toList(),
+                sub.getActivo()
         )).toList();
     }
 
@@ -216,7 +254,8 @@ public class OrdenService {
                 item.getCantidad(),
                 item.getPrecioUnitario(),
                 item.getEstadoItem()
-            )).toList()
+                )).toList(),
+                sub.getActivo()
         )).toList();
     }
     
@@ -243,7 +282,8 @@ public class OrdenService {
                 item.getCantidad(),
                 item.getPrecioUnitario(),
                 item.getEstadoItem()
-            )).toList()
+                )).toList(),
+                sub.getActivo()
         )).toList();
     }
     
@@ -286,6 +326,25 @@ public class OrdenService {
         }
         
         ordenMaestra.setEstadoGlobal(nuevoEstadoGlobal);
+
+        try {
+            analyticsClient.sendEvent(analyticsApiKey, new AnalyticsEvent(
+                UUID.randomUUID().toString(),
+                "ORDER_STATUS_CHANGED",
+                "ordenes-service",
+                "sub_orden",
+                String.valueOf(idSubOrden),
+                List.of(String.valueOf(subOrden.getIdVendedor())),
+                Instant.now().toString(),
+                Map.of(
+                    "id_orden_maestra", ordenMaestra.getIdOMaestra(),
+                    "nuevo_estado_parcial", nuevoEstado,
+                    "nuevo_estado_global", nuevoEstadoGlobal
+                )
+            ));
+        } catch (Exception e) {
+            System.err.println("[ANALYTICS] Error enviando ORDER_STATUS_CHANGED: " + e.getMessage());
+        }
     }
     
     @Transactional(readOnly = true)
@@ -319,8 +378,10 @@ public class OrdenService {
                     item.getCantidad(),
                     item.getPrecioUnitario(),
                     item.getEstadoItem()
-                )).toList()
+                )).toList(),
+                sub.getActivo()
             )).toList()
+
         )).toList();
     }
 
@@ -346,8 +407,10 @@ public class OrdenService {
                     item.getIdProducto(),
                     item.getCantidad(),
                     item.getPrecioUnitario()
-                )).toList()
+                )).toList(),
+                sub.getActivo()
             )).toList()
+
         )).toList();
     }
 

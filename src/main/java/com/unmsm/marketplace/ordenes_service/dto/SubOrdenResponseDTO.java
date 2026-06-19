@@ -17,5 +17,6 @@ public record SubOrdenResponseDTO(
     Integer estadoParcialVendedor,
     BigDecimal montoSubTotalVendedor,
     LocalDateTime fechaCreacionSub,
-    List<OrdenItemResponseDTO> items
+    List<OrdenItemResponseDTO> items,
+    Boolean activo
 ) {}
