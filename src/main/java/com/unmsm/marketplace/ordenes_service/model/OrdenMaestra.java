@@ -1,7 +1,6 @@
 package com.unmsm.marketplace.ordenes_service.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,6 +35,12 @@ public class OrdenMaestra {
 
     @Column(name = "fecha_creacion")
     private LocalDateTime fechaCreacion;
+
+    @Column(name = "activo")
+    private Boolean activo = true;
+
+    @Column(name = "fecha_archivado")
+    private LocalDateTime fechaArchivado;
 
     @OneToMany(mappedBy = "ordenMaestra", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<SubOrden> subOrdenes;

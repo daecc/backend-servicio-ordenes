@@ -32,21 +32,29 @@ Microservicio del Marketplace para gestion de ordenes maestras, subordenes por v
    |   | Feign Client     |---POST /notificar-> | Microservicio Ventas
    |   | SalesService     |                     | (sales-service)
    |   +------------------+                     |
+   |            |                               |
+   |            v                               |
+   |   +------------------+                     |
+   |   | OrdenArchivador  | (tarea @Scheduled)  |
+   |   | 3:00 AM y 4:00 AM|                     |
+   |   +------------------+                     |
    +--------------------------------------------+
 ```
 
 ## Endpoints
 
-| Metodo | Ruta | Descripcion | Consumido por |
-|--------|------|-------------|---------------|
-| POST | `/api/v1/ordenes/checkout` | Procesar checkout (recibe orden, asigna sellers via RR, notifica a Ventas) | Frontend Superadmin |
-| GET | `/api/v1/ordenes` | Listar todas las ordenes maestras | Frontend Superadmin |
-| GET | `/api/v1/ordenes/vendedor/{idVendedor}` | Buscar subordenes por ID de vendedor | Frontend Vendor Admin |
-| GET | `/api/v1/ordenes/vendedor/nombre/{nombre}` | Buscar subordenes por nombre de vendedor | Frontend Vendor Admin |
-| PUT | `/api/v1/ordenes/suborden/{idSubOrden}/estado/{nuevoEstado}` | Actualizar estado logistico de suborden | Frontend Vendor Admin |
-| GET | `/api/v1/ordenes/cliente/{dni}` | Buscar ordenes por DNI del cliente | Frontend Superadmin |
-| GET | `/swagger-ui.html` | Documentacion Swagger UI | Desarrolladores |
-| GET | `/v3/api-docs` | OpenAPI spec en JSON | Desarrolladores |
+| Metodo | Ruta | Descripcion | Consumido por | Filtro |
+|--------|------|-------------|---------------|--------|
+| POST | `/api/v1/ordenes/checkout` | Procesar checkout (recibe orden, asigna sellers via RR, notifica a Ventas) | Frontend Superadmin | - |
+| GET | `/api/v1/ordenes` | Listar todas las ordenes maestras | Frontend Superadmin | Todas |
+| GET | `/api/v1/ordenes/vendedor/{idVendedor}` | Buscar subordenes por ID de vendedor | Frontend Admin Vendedor | Solo activas |
+| GET | `/api/v1/ordenes/admin/vendedor/{idVendedor}` | Buscar subordenes por ID de vendedor (historial completo) | Frontend Superadmin | Todas |
+| GET | `/api/v1/ordenes/vendedor/nombre/{nombre}` | Buscar subordenes por nombre de vendedor | Frontend Superadmin | Todas |
+| PUT | `/api/v1/ordenes/suborden/{idSubOrden}/estado/{nuevoEstado}` | Actualizar estado logistico de suborden | Frontend Admin Vendedor | - |
+| GET | `/api/v1/ordenes/cliente/{dni}` | Buscar ordenes por DNI del cliente | Frontend Cliente / Superadmin | Solo activas |
+| GET | `/api/v1/ordenes/ventas/cliente/{dni}` | Buscar ordenes por DNI para el microservicio de Ventas | Microservicio Ventas | Solo activas |
+| GET | `/swagger-ui.html` | Documentacion Swagger UI | Desarrolladores | - |
+| GET | `/v3/api-docs` | OpenAPI spec en JSON | Desarrolladores | - |
 
 ## Flujo de una orden
 
@@ -57,6 +65,35 @@ Microservicio del Marketplace para gestion de ordenes maestras, subordenes por v
    - Guarda la asignacion en la tabla `control_round_robin`
 3. Persiste la orden completa en PostgreSQL
 4. Notifica al microservicio de **Ventas** via `POST /api/internal/ordenes/notificar` con la orden creada y los sellers asignados
+
+## Archivado automatico (Soft Delete)
+
+El servicio incluye un archivador que se ejecuta diariamente via tareas programadas (`@Scheduled`):
+
+| Horario | Accion |
+|---------|--------|
+| **3:00 AM** | Las ordenes completadas (estado 5) sin fecha de archivo reciben `fecha_archivado = ahora` |
+| **4:00 AM** | Las ordenes con `fecha_archivado` mayor a 30 dias se marcan como `activo = false` (tanto la orden maestra como sus subordenes) |
+
+Una vez archivada, no se puede modificar el estado de la orden (la API rechaza el cambio con error).
+
+### Columnas agregadas a la BD
+
+| Tabla | Columna | Tipo | Default |
+|-------|---------|------|---------|
+| `orden_maestra` | `activo` | boolean | true |
+| `orden_maestra` | `fecha_archivado` | timestamp | null |
+| `sub_orden` | `activo` | boolean | true |
+
+## Estados de orden
+
+| Estado | Descripcion |
+|--------|-------------|
+| 1 | PENDIENTE |
+| 2 | PREPARANDO |
+| 3 | DESPACHADO |
+| 4 | ENTREGADO |
+| 5 | COMPLETADO |
 
 ## Dependencias externas
 

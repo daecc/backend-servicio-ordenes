@@ -2,7 +2,6 @@
 package com.unmsm.marketplace.ordenes_service.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,9 +28,6 @@ public class SubOrden {
     @Column(name = "NombreVendedor")
     private String nombreVendedor;
     
-    @Column(name = "id_liquid_vendedor")
-    private Long idLiquidVendedor;
-
     @Column(name = "direccion_envio")
     private String direccionEnvio;
 
@@ -52,6 +48,9 @@ public class SubOrden {
 
     @Column(name = "fecha_creacion_sub")
     private LocalDateTime fechaCreacionSub;
+
+    @Column(name = "activo")
+    private Boolean activo = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_omaestra", nullable = false)

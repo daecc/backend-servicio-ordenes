@@ -36,7 +36,7 @@ public class OrdenController {
     
     
     @GetMapping
-    @Operation(summary = "Listar todas las ordenes maestras")
+    @Operation(summary = "Listar todas las ordenes maestras", description = "Para el superadmin, muestra todas las ordenes sin filtro")
     public ResponseEntity<List<OrdenMaestraResponseDTO>> listarTodasLasOrdenes() {
         List<OrdenMaestraResponseDTO> ordenes = ordenService.obtenerTodasLasOrdenes();
         return ResponseEntity.ok(ordenes);
@@ -44,9 +44,22 @@ public class OrdenController {
     
     
     @GetMapping("/vendedor/{idVendedor}")
-    @Operation(summary = "Buscar subordenes por ID de vendedor")
+    @Operation(summary = "Buscar subordenes por ID de vendedor (solo activas)", description = "Para el frontend del admin vendedor que inicio sesion")
     public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedor(@PathVariable Long idVendedor) {
     List<SubOrdenResponseDTO> subOrdenes = ordenService.obtenerOrdenesPorVendedor(idVendedor);
+    
+    if (subOrdenes.isEmpty()) {
+        return ResponseEntity.noContent().build();
+    }
+    
+    return ResponseEntity.ok(subOrdenes);
+    }
+    
+    
+    @GetMapping("/admin/vendedor/{idVendedor}")
+    @Operation(summary = "Buscar subordenes por ID de vendedor (todas)", description = "Para el buscador del superadmin, muestra historial completo")
+    public ResponseEntity<List<SubOrdenResponseDTO>> listarPorVendedorAdmin(@PathVariable Long idVendedor) {
+    List<SubOrdenResponseDTO> subOrdenes = ordenService.obtenerTodasLasOrdenesPorVendedor(idVendedor);
     
     if (subOrdenes.isEmpty()) {
         return ResponseEntity.noContent().build();
@@ -81,19 +94,6 @@ public class OrdenController {
     }
     
     
-    @GetMapping("/cliente/{dni}")
-    @Operation(summary = "Buscar ordenes por DNI del cliente")
-    public ResponseEntity<List<OrdenMaestraResponseDTO>> buscarOrdenesPorDni(@PathVariable String dni) {
-        List<OrdenMaestraResponseDTO> ordenes = ordenService.obtenerOrdenesPorDni(dni);
-        
-        if (ordenes.isEmpty()) {
-            return ResponseEntity.noContent().build();
-        }
-        
-        return ResponseEntity.ok(ordenes);
-    }
-    
-    
     @GetMapping("/ventas/cliente/{dni}")
     @Operation(summary = "Buscar ordenes por DNI para el microservicio de Ventas", description = "Endpoint exclusivo para Ventas, retorna solo los datos necesarios para que el cliente vea sus pedidos")
     public ResponseEntity<List<OrdenMaestraVentasDTO>> buscarOrdenesPorDniParaVentas(@PathVariable String dni) {
@@ -106,5 +106,17 @@ public class OrdenController {
         return ResponseEntity.ok(ordenes);
     }
     
+    
+    @GetMapping("/cliente/{dni}")
+    @Operation(summary = "Buscar ordenes por DNI del cliente")
+    public ResponseEntity<List<OrdenMaestraResponseDTO>> buscarOrdenesPorDni(@PathVariable String dni) {
+        List<OrdenMaestraResponseDTO> ordenes = ordenService.obtenerOrdenesPorDni(dni);
+        
+        if (ordenes.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        
+        return ResponseEntity.ok(ordenes);
+    }
     
 }

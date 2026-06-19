@@ -31,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional; // NUEVO: Para manejar el Optional del Repositorio
 
 @Service
 public class OrdenService {
@@ -169,6 +168,33 @@ public class OrdenService {
 
     @Transactional(readOnly = true)
     public List<SubOrdenResponseDTO> obtenerOrdenesPorVendedor(Long idVendedor) {
+        List<SubOrden> subOrdenes = subOrdenRepository.findByIdVendedorAndActivoTrue(idVendedor);
+
+        return subOrdenes.stream().map(sub -> new SubOrdenResponseDTO(
+            sub.getIdSOrden(),
+            sub.getOrdenMaestra().getIdOMaestra(),
+            sub.getIdSeller(),
+            sub.getIdVendedor(),
+            sub.getNombreVendedor(),
+            sub.getDireccionEnvio(),
+            sub.getDistritoEnvio(),
+            sub.getMetodoEnvio(),
+            sub.getTelefonoContacto(),
+            sub.getEstadoParcialVendedor(),
+            sub.getMontoSubTotalVendedor(),
+            sub.getFechaCreacionSub(),
+            sub.getOrdenItems().stream().map(item -> new OrdenItemResponseDTO(
+                item.getIdOItem(),
+                item.getIdProducto(),
+                item.getCantidad(),
+                item.getPrecioUnitario(),
+                item.getEstadoItem()
+            )).toList()
+        )).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<SubOrdenResponseDTO> obtenerTodasLasOrdenesPorVendedor(Long idVendedor) {
         List<SubOrden> subOrdenes = subOrdenRepository.findByIdVendedor(idVendedor);
 
         return subOrdenes.stream().map(sub -> new SubOrdenResponseDTO(
@@ -225,6 +251,10 @@ public class OrdenService {
     public void actualizarEstadoLogistico(Long idSubOrden, Integer nuevoEstado) {
         SubOrden subOrden = subOrdenRepository.findById(idSubOrden)
             .orElseThrow(() -> new RuntimeException("SubOrden no encontrada"));
+
+        if (Boolean.FALSE.equals(subOrden.getActivo())) {
+            throw new RuntimeException("La orden esta archivada, no se puede modificar");
+        }
         
         subOrden.setEstadoParcialVendedor(nuevoEstado);
         
@@ -260,7 +290,7 @@ public class OrdenService {
     
     @Transactional(readOnly = true)
     public List<OrdenMaestraResponseDTO> obtenerOrdenesPorDni(String dni) {
-        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDni(dni);
+        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDniAndActivoTrue(dni);
         
         return ordenes.stream().map(orden -> new OrdenMaestraResponseDTO(
             orden.getIdOMaestra(),
@@ -296,7 +326,7 @@ public class OrdenService {
 
     @Transactional(readOnly = true)
     public List<OrdenMaestraVentasDTO> obtenerOrdenesPorDniParaVentas(String dni) {
-        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDni(dni);
+        List<OrdenMaestra> ordenes = ordenMaestraRepository.findByClienteDniAndActivoTrue(dni);
 
         return ordenes.stream().map(orden -> new OrdenMaestraVentasDTO(
             orden.getIdOMaestra(),

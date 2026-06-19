@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface SubOrdenRepository extends JpaRepository<SubOrden, Long>{
-    // Spring Boot genera el "SELECT * FROM sub_ordenes WHERE id_vendedor = ?" automáticamente
     List<SubOrden> findByIdVendedor(Long idVendedor);
+    List<SubOrden> findByIdVendedorAndActivoTrue(Long idVendedor);
     List<SubOrden> findByNombreVendedorContainingIgnoreCase(String nombre);
 }
